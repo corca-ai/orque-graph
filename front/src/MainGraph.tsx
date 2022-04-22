@@ -1,4 +1,5 @@
 import { Network } from "vis-network";
+import { DataSet, DataView } from 'vis-data';
 import React, { useEffect, useState, useRef } from "react";
 import axiosGraphInfo from "./axios";
 
@@ -6,16 +7,24 @@ import axiosGraphInfo from "./axios";
 const MainGraph = () => {
   const [nodes, setNodes] = useState<any>([]);
   const [edges, setEdges] = useState<any>([]);
-  const [webs, setWebs] = useState<any>([]);
   const [network, setNetwork] = useState<Network>();
+
+  const [tagforfilter, setTagforfilter] = useState<string>("");
   const container = useRef<HTMLDivElement>(null);
+
+  const nodeFilter = (node: any) => {
+    if (tagforfilter === "") {
+      return true;
+    }
+    return node.tags.includes(tagforfilter);
+  };
 
   useEffect(() => {
     axiosGraphInfo(
       "/graph_info").then(({ data }) => {
         setNodes(data.nodes);
         setEdges(data.edges);
-        setWebs(data.webs);
+
         console.log(data.nodes);
         console.log(data.edges);
       });
@@ -26,11 +35,19 @@ const MainGraph = () => {
       network.destroy();
     }
     if (container.current) {
-      var data = {
+
+      const nodeData = new DataSet(nodes);
+
+      const nodesView = new DataView(nodeData, {
+        filter: nodeFilter,
+      });
+      
+      const data = {
         nodes: nodes,
         edges: edges,
       };
-      var options = {
+
+      const options = {
         autoResize: true,
         height: "100%",
         width: "100%",
@@ -55,7 +72,10 @@ const MainGraph = () => {
           stabilization: { iterations: 150 },
         },
       };
-      var _network = new Network(container.current, data, options);
+      const _network = new Network(container.current, {
+        nodes: nodesView,
+        edges: edges,
+      }, options);
 
       _network.on(
         "click",
@@ -63,10 +83,10 @@ const MainGraph = () => {
           console.log("MainGraph: click: params:", params);
           if (params.nodes.length > 0) {
             const nodeidx = params.nodes[0];
-            const web = webs[nodeidx];
-            //console.log("MainGraph: click: web:", web);
-            // redirect to web
-            window.location.href = web; 
+            const weburl = nodes[nodeidx].weburl;
+            if (weburl) {
+              window.open(weburl, "_blank");
+            }
           }
         }
       )
