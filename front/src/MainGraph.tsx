@@ -16,10 +16,9 @@ const MainGraph = () => {
         setNodes(data.nodes);
         setEdges(data.edges);
         setWebs(data.webs);
+        console.log(data.nodes);
+        console.log(data.edges);
       });
-
-    //console.log("MainGraph: useEffect");
-    //console.log("MainGraph: useEffect: nodes:", nodes);
   }, []);
 
   useEffect(() => {
