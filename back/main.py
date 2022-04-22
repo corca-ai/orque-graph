@@ -1,5 +1,4 @@
 
-from audioop import avg
 import os
 from typing import Dict, List
 from requests import request
@@ -16,9 +15,7 @@ NOTION_KEY = os.getenv("NOTION_KEY")
 TAG_CLASS_ID = "Tags"
 app = FastAPI()
 
-origins = [
-    str(os.getenv("FRONT_URL"))
-]
+origins = [str(os.getenv("FRONT_URL"))]
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +24,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def save_page_metainfo_json():
 
@@ -40,17 +38,14 @@ def save_page_metainfo_json():
         "Notion-Version": "2022-02-22",
     }
 
-
     response = request("GET", url, headers=headers)
 
     print(response.status_code)
     print(response.text)
 
-    
-
     with open("env_metainfo.json", "w") as f:
         f.write(response.text)
-    
+
 
 def cache_allpage_info_json():
 
@@ -64,7 +59,6 @@ def cache_allpage_info_json():
         "Notion-Version": "2022-02-22",
     }
 
-
     response = request("POST", url, headers=headers)
 
     print(response.status_code)
@@ -73,42 +67,46 @@ def cache_allpage_info_json():
     with open("env_pages_info.json", "w") as f:
         f.write(response.text)
 
+
 import colorsys
 import json
 
+
 def randomcolorfromint(i, N):
-    import random
     import colorsys
+
     h = i / N
     rgb = colorsys.hsv_to_rgb(h, 1.0, 1.0)
-    return '#%02x%02x%02x' % (int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
+    return "#%02x%02x%02x" % (
+        int(rgb[0] * 255),
+        int(rgb[1] * 255),
+        int(rgb[2] * 255),
+    )
 
 
-def colorcodetorgb(_color:str)->List[int]:
-            return [int(_color[i:i+2], 16) for i in (0, 2 ,4)]
+def colorcodetorgb(_color: str) -> List[int]:
+    return [int(_color[i : i + 2], 16) for i in (0, 2, 4)]
 
 
 # average input colors
-def avg_color(colorlist : List[str])-> str:
+def avg_color(colorlist: List[str]) -> str:
     rgb_list = [colorcodetorgb(_color[1:]) for _color in colorlist]
     r, g, b = [sum(x) / len(colorlist) for x in zip(*rgb_list)]
-    return '#%02x%02x%02x' % (int(r ), int(g ), int(b ))
-    
+    return "#%02x%02x%02x" % (int(r), int(g), int(b))
 
 
 def generate_graphinfo():
-    
+
     # create tags map
     metainfo = json.load(open("env_metainfo.json"))
     pages_info = json.load(open("env_pages_info.json"))["results"]
 
+    tagset = metainfo["properties"][TAG_CLASS_ID]["multi_select"][
+        "options"
+    ]
 
-    tagset = metainfo["properties"][TAG_CLASS_ID]["multi_select"]["options"]
-        
     node_list = []
-    page_tags_list = []
     edge_rel_list = []
-    web_list = []
 
     # { id: 0, label: "Myriel", group: 1 },
     # { id: 1, label: "Napoleon", group: 1 },
@@ -122,63 +120,84 @@ def generate_graphinfo():
     for page in pages_info:
         _tags = []
         try:
-            for tag in page["properties"][TAG_CLASS_ID]["multi_select"]:
-                _tags.append(tag['name'])
+            for tag in page["properties"][TAG_CLASS_ID][
+                "multi_select"
+            ]:
+                _tags.append(tag["name"])
 
             _node = {
-                "id" : iteration,
-                "label" : page["properties"]["Name"]["title"][0]["plain_text"].replace('\n', ' '),
-                "group" : 0,
-                "weburl" : page['url'],
-                "tags" : _tags,
+                "id": iteration,
+                "label": page["properties"]["Name"]["title"][0][
+                    "plain_text"
+                ].replace("\n", " "),
+                "group": 0,
+                "weburl": page["url"],
+                "tags": _tags,
             }
 
         except:
             continue
-        
+
         iteration += 1
-        
+
         node_list.append(_node)
-        page_tags_list.append(_tags)
-        web_list.append(page["url"])
 
         existing_tagset.update(_tags)
 
     existing_tagset.add("NOTAG")
     n_tags = len(existing_tagset)
-    _tag_color_list = [randomcolorfromint(i, n_tags) for i in range(len(existing_tagset) + 1)]
-    tag_color_map = {tag: color for tag, color in zip(existing_tagset, _tag_color_list)}
-    
+    _tag_color_list = [
+        randomcolorfromint(i, n_tags)
+        for i in range(len(existing_tagset) + 1)
+    ]
+    tag_color_map = {
+        tag: color
+        for tag, color in zip(existing_tagset, _tag_color_list)
+    }
+
     for idx, node in enumerate(node_list):
-        if len(page_tags_list[idx]) > 0:
-            node["color"] = avg_color([tag_color_map[_tag] for _tag in page_tags_list[idx]])
+        if len(node["tags"]) > 0:
+            node["color"] = avg_color(
+                [tag_color_map[_tag] for _tag in node["tags"]]
+            )
         else:
             node["color"] = tag_color_map["NOTAG"]
 
-
     for idx, nodei in enumerate(node_list):
-        tag_i = page_tags_list[idx]
+        tag_i = nodei["tags"]
 
         for jdx, nodej in enumerate(node_list):
             if idx <= jdx:
                 continue
-            tag_j = page_tags_list[jdx]
+            tag_j = nodej["tags"]
 
             # if there are common tags, add edge
             intersection = set(tag_i).intersection(tag_j)
 
             if len(intersection) > 0:
-                avg_tagset_color = avg_color([tag_color_map[_tag] for _tag in intersection])
-                strength = (1 - (len(intersection)/(len(set(tag_i) | set(tag_j))))) * 100
-                edge_rel_list.append({"from": idx, "to": jdx, "length": strength, "color" : avg_tagset_color})
-    
-    
-    
+                avg_tagset_color = avg_color(
+                    [tag_color_map[_tag] for _tag in intersection]
+                )
+                strength = (
+                    1
+                    - (
+                        len(intersection)
+                        / (len(set(tag_i) | set(tag_j)))
+                    )
+                ) * 100
+                edge_rel_list.append(
+                    {
+                        "from": idx,
+                        "to": jdx,
+                        "length": strength,
+                        "color": avg_tagset_color,
+                        "tags": intersection,
+                    }
+                )
 
     print(len(node_list))
 
-
-    return node_list, edge_rel_list, page_tags_list, web_list
+    return node_list, edge_rel_list
 
 
 @app.get("/update_cache")
@@ -188,16 +207,12 @@ def cache_all():
     generate_graphinfo()
 
 
-
-
-@app.get('/graph_info')
+@app.get("/graph_info")
 def get_graph_info():
-    node_list, edge_rel_list, page_tags_list, web_list = generate_graphinfo()
+    node_list, edge_rel_list = generate_graphinfo()
     return {
         "nodes": node_list,
         "edges": edge_rel_list,
-        "tags": page_tags_list,
-        "webs": web_list,
     }
 
 
